@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>csrlab 稀疏矩阵热力格</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#071018;color:#dceaf2}
+header{display:flex;align-items:baseline;gap:12px;padding:12px 18px;border-bottom:1px solid #1d3141;background:#0b1a22}
+header h1{font-size:15px;margin:0;color:#f0a63c;font-weight:600}
+.mid{display:grid;grid-template-columns:minmax(360px,1fr) 340px;gap:14px;padding:14px 18px 4px;align-items:start}
+.panel{background:#0e1a24;border:1px solid #1d3141;border-radius:10px;padding:10px}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.arr{background:#08131b;border-radius:8px;padding:5px 8px;margin:5px 0;color:#8fd6c8;word-break:break-all}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{border-bottom:1px solid #162836;padding:3px 6px;text-align:left;color:#bcd6e2}
+th{color:#7c9cb2;font-weight:500}
+canvas{background:#0a141c;border-radius:8px;display:block;width:100%}
+footer{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:12px 18px;border-top:1px solid #1d3141}
+label{display:block;font-size:11px;color:#7c9cb2;margin-bottom:3px}
+input{font:inherit;font-size:13px;width:74px;padding:4px 7px;border:1px solid #1d3141;border-radius:7px;background:#08131b;color:#dceaf2}
+button{font:inherit;font-size:12px;padding:5px 12px;margin-right:7px;border:1px solid #23566a;border-radius:8px;background:#122a35;color:#8fd6c8;cursor:pointer}
+button.main{background:#f0a63c;border-color:#f0a63c;color:#0a141c;font-weight:600}
+.chip{display:inline-block;font-size:11px;padding:2px 9px;border-radius:999px;background:#122a35;color:#8fd6c8;margin:2px 5px 2px 0}
+.chip.bad{background:#3a1c22;color:#ff9aa9}
+pre{background:#08131b;color:#8fd6c8;padding:9px;border-radius:8px;overflow:auto;font-size:11px;margin:8px 0 0}
+#log{font-size:12px;color:#7c9cb2;padding:0 18px 16px}
+</style></head>
+<body>
+<header>
+  <h1>csrlab 稀疏矩阵热力格</h1>
+  <span id="shape" class="chip">形状</span>
+  <span id="legend"></span>
+</header>
+<div class="mid">
+  <div class="panel">
+    <canvas id="grid" width="620" height="300"></canvas>
+    <div id="arrays" class="mono"></div>
+  </div>
+  <div class="panel">
+    <div class="mono" style="color:#7c9cb2">三元组（行 列 值）</div>
+    <table id="triples"><thead><tr><th>r</th><th>c</th><th>值</th></tr></thead><tbody></tbody></table>
+    <pre id="out">还没跑</pre>
+  </div>
+</div>
+<footer>
+  <div><label>行</label><input id="row" type="number" value="0"></div>
+  <div><label>列</label><input id="col" type="number" value="0"></div>
+  <div><label>值</label><input id="value" type="number" value="3"></div>
+  <div><label>乘向量（逗号分隔）</label><input id="vec" style="width:150px" value="1,2,3"></div>
+  <div>
+    <button id="doSet" class="main">置值</button>
+    <button id="doDrop">擦除</button>
+    <button id="doTranspose">转置</button>
+    <button id="doMul">乘向量</button>
+    <button id="doReset">重置场景</button>
+  </div>
+</footer>
+<div id="log">改行列值时点置值；值为零会被拒。</div>
+<div id="scene" hidden>{
+  "state": {
+    "rows": 3,
+    "cols": 4,
+    "rowptr": [0, 0, 0, 0],
+    "colidx": [],
+    "values": [],
+    "sets": 0,
+    "updates": 0,
+    "erases": 0,
+    "shifts": 0,
+    "transposes": 0,
+    "muls": []
+  },
+  "events": [
+    { "kind": "set", "row": 0, "col": 3, "value": 5 },
+    { "kind": "set", "row": 1, "col": 1, "value": 8 },
+    { "kind": "set", "row": 0, "col": 1, "value": 4 },
+    { "kind": "set", "row": 2, "col": 2, "value": 6 },
+    { "kind": "set", "row": 1, "col": 1, "value": 9 },
+    { "kind": "drop", "row": 0, "col": 1 },
+    { "kind": "transpose" },
+    { "kind": "set", "row": 1, "col": 0, "value": 7 },
+    { "kind": "drop", "row": 2, "col": 2 },
+    { "kind": "set", "row": 0, "col": 1, "value": 3 },
+    { "kind": "mul", "vec": [1, 2, 3] },
+    { "kind": "set", "row": 2, "col": 0, "value": 4 },
+    { "kind": "transpose" },
+    { "kind": "set", "row": 0, "col": 0, "value": 2 }
+  ]
+}</div>
+<script type="module">
+import { render } from "./app.js";
+
+const initial = document.getElementById("scene").textContent;
+const spec = JSON.parse(initial);
+const canvas = document.getElementById("grid");
+const ctx = canvas.getContext("2d");
+
+function chips(items) {
+  const box = document.getElementById("legend");
+  box.textContent = "";
+  items.forEach(function (item) {
+    const span = document.createElement("span");
+    span.className = item[1] ? "chip bad" : "chip";
+    span.textContent = item[0] + " " + item[1];
+    box.appendChild(span);
+  });
+}
+
+function drawGrid(view) {
+  ctx.fillStyle = "#0a141c";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const rows = view.rows || 1;
+  const cols = view.cols || 1;
+  const left = 42;
+  const top = 24;
+  const cell = Math.max(22, Math.min(54, Math.floor(Math.min((canvas.width - left - 14) / cols,
+                                                              (canvas.height - top - 14) / rows))));
+  const cellMap = {};
+  let peak = 1;
+  (view.values || []).forEach(function (value) { peak = Math.max(peak, Math.abs(value)); });
+  for (let r = 0; r < rows; r += 1) {
+    for (let i = view.rowptr[r] || 0; i < (view.rowptr[r + 1] || 0); i += 1) {
+      cellMap[r + ":" + view.colidx[i]] = view.values[i];
+    }
+  }
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      const x = left + c * cell;
+      const y = top + r * cell;
+      const value = cellMap[r + ":" + c];
+      if (value === undefined) {
+        ctx.fillStyle = "#0e1c26";
+      } else {
+        const heat = 0.22 + 0.62 * Math.min(1, Math.abs(value) / peak);
+        ctx.fillStyle = "rgba(240,166,60," + heat.toFixed(2) + ")";
+      }
+      ctx.fillRect(x, y, cell - 3, cell - 3);
+      ctx.strokeStyle = "#1d3141";
+      ctx.strokeRect(x + 0.5, y + 0.5, cell - 4, cell - 4);
+      if (value !== undefined) {
+        ctx.fillStyle = "#07131b";
+        ctx.font = "12px ui-monospace, monospace";
+        ctx.fillText(String(value), x + 7, y + cell / 2 + 4);
+      }
+    }
+  }
+  ctx.fillStyle = "#7c9cb2";
+  ctx.font = "11px ui-monospace, monospace";
+  for (let c = 0; c < cols; c += 1) { ctx.fillText("c" + c, left + c * cell + 4, top - 7); }
+  for (let r = 0; r < rows; r += 1) { ctx.fillText("r" + r, 8, top + r * cell + cell / 2 + 2); }
+}
+
+function draw() {
+  const view = render(spec);
+  document.getElementById("out").textContent = JSON.stringify(view, null, 1);
+  document.getElementById("shape").textContent = "形状 " + view.rows + " x " + view.cols;
+  document.getElementById("arrays").innerHTML = "";
+  [["行指针", view.rowptr], ["列索引", view.colidx], ["值", view.values]].forEach(function (pair) {
+    const line = document.createElement("div");
+    line.className = "arr";
+    line.textContent = pair[0] + " = [" + pair[1].join(", ") + "]";
+    document.getElementById("arrays").appendChild(line);
+  });
+  const body = document.querySelector("#triples tbody");
+  body.textContent = "";
+  for (let r = 0; r < view.rows; r += 1) {
+    for (let i = view.rowptr[r] || 0; i < (view.rowptr[r + 1] || 0); i += 1) {
+      const tr = document.createElement("tr");
+      [r, view.colidx[i], view.values[i]].forEach(function (cell) {
+        const td = document.createElement("td");
+        td.textContent = String(cell);
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    }
+  }
+  chips([["非零 " + view.nnz, false], ["插入 " + view.sets, false], ["覆盖 " + view.updates, false],
+         ["擦除 " + view.erases, false], ["移位 " + view.shifts, false], ["转置 " + view.transposes, false],
+         ["行指针自洽 " + view.ptr_ok, !view.ptr_ok], ["列索引升序 " + view.cols_ok, !view.cols_ok],
+         ["值全非零 " + view.value_ok, !view.value_ok], ["非零数自洽 " + view.count_ok, !view.count_ok]]);
+  drawGrid(view);
+}
+
+function note(text) {
+  document.getElementById("log").textContent = text;
+}
+function num(id) {
+  return Number(document.getElementById(id).value);
+}
+
+document.getElementById("doSet").addEventListener("click", function () {
+  spec.events.push({ kind: "set", row: num("row"), col: num("col"), value: num("value") });
+  note("置值 " + num("row") + " " + num("col"));
+  draw();
+});
+document.getElementById("doDrop").addEventListener("click", function () {
+  spec.events.push({ kind: "drop", row: num("row"), col: num("col") });
+  note("擦除 " + num("row") + " " + num("col"));
+  draw();
+});
+document.getElementById("doTranspose").addEventListener("click", function () {
+  spec.events.push({ kind: "transpose" });
+  note("转置");
+  draw();
+});
+document.getElementById("doMul").addEventListener("click", function () {
+  const vec = document.getElementById("vec").value.split(",").map(function (piece) { return Number(piece.trim()); });
+  spec.events.push({ kind: "mul", vec: vec });
+  note("乘向量 " + vec.join(" "));
+  draw();
+});
+document.getElementById("doReset").addEventListener("click", function () {
+  const fresh = JSON.parse(initial);
+  spec.events = fresh.events;
+  spec.state = fresh.state;
+  note("场景已重置");
+  draw();
+});
+draw();
+</script>
+</body>
+</html>

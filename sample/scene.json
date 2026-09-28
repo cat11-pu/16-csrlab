@@ -1,0 +1,31 @@
+{
+  "state": {
+    "rows": 3,
+    "cols": 4,
+    "rowptr": [0, 0, 0, 0],
+    "colidx": [],
+    "values": [],
+    "sets": 0,
+    "updates": 0,
+    "erases": 0,
+    "shifts": 0,
+    "transposes": 0,
+    "muls": []
+  },
+  "events": [
+    { "kind": "set", "row": 0, "col": 3, "value": 5 },
+    { "kind": "set", "row": 1, "col": 1, "value": 8 },
+    { "kind": "set", "row": 0, "col": 1, "value": 4 },
+    { "kind": "set", "row": 2, "col": 2, "value": 6 },
+    { "kind": "set", "row": 1, "col": 1, "value": 9 },
+    { "kind": "drop", "row": 0, "col": 1 },
+    { "kind": "transpose" },
+    { "kind": "set", "row": 1, "col": 0, "value": 7 },
+    { "kind": "drop", "row": 2, "col": 2 },
+    { "kind": "set", "row": 0, "col": 1, "value": 3 },
+    { "kind": "mul", "vec": [1, 2, 3] },
+    { "kind": "set", "row": 2, "col": 0, "value": 4 },
+    { "kind": "transpose" },
+    { "kind": "set", "row": 0, "col": 0, "value": 2 }
+  ]
+}
